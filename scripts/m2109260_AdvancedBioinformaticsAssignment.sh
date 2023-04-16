@@ -1,7 +1,5 @@
 #!/bin/bash
-#$1 R1 of paired-end fastq.gz
-#$2 R2 of paired-end fastq.gz
-#
+
 # requires the reference genome to be stored in DATA_DIR/reference
 # wget http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/hg19.fa.gz
 # wget http://hgdownload.soe.ucsc.edu/goldenPath/hg19/bigZips/hg19.fa.gz
@@ -225,9 +223,9 @@ awk 'BEGIN{count=0; sum=0; sumsq=0; min=0; max=0}
 
 
 #cleanup - essential to minimise storage requirements
-rm $ALIGN_DIR/${FILE_NAME}_sorted.*
-rm $ALIGN_DIR/${FILE_NAME}_aligned.*
-rm $ALIGN_DIR/${FILE_NAME}_sorted_marked*
+rm ${ALIGN_DIR}/${FILE_NAME}_sorted.*
+rm ${ALIGN_DIR}/${FILE_NAME}_aligned.*
+rm ${ALIGN_DIR}/${FILE_NAME}_sorted_marked*
 
 
 
@@ -284,7 +282,7 @@ bgzip $RESULTS_DIR/${FILE_NAME}_filtered.vcf
 tabix -p vcf $RESULTS_DIR/${FILE_NAME}_filtered.vcf.gz
 
 #cleanup
-rm $RESULTS_DIR/${FILE_NAME}_filter.tmp.vcf
+rm ${RESULTS_DIR}/${FILE_NAME}_filter.tmp.vcf
  
 
 
