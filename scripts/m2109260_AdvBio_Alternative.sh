@@ -1,11 +1,13 @@
 #!/bin/bash
-#$1 R1 of paired-end fastq.gz
-#$2 R2 of paired-end fastq.gz
+# ALTERNATIVE VERSION
+#   uses bowtie2 as the aligner instead of bwa mem
 #
+# Installation of bowtie2 required using the following command:
+# conda install -c bioconda bowtie2
+
 # requires the reference genome to be stored in DATA_DIR/reference
 # wget http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/hg19.fa.gz
-# wget http://hgdownload.soe.ucsc.edu/goldenPath/hg19/bigZips/hg19.fa.gz
-# This script requires that your reference index is created in advance by running 
+# This script requires that your reference index is created in advance by running
 # bwa index ~/ngs_course/dnaseq/data/reference/hg19.fa.gz
 #
 
@@ -102,6 +104,7 @@ echo -e "\n\n"
 
 
 ################## Section 2.3 ALIGNMENT ##################
+#####      ALTERNATIVE    ######
 
 echo "** Step 2.3 Alignment *"
 ## 0) Reference index must be created before running this script to avoid timing out
@@ -117,10 +120,40 @@ echo "** Step 2.3 Alignment *"
 
 read_grp_info="@RG\tID:11V6WR1.111.D1375ACXX.1\tSM:m2109260\tPL:ILLUMINA\tLB:NGS-AdvBio\tDT:2017-01-01\tPU:D1375ACXX.1"
 
-echo "**** bwa mem"
-bwa mem -t 4 -v 1 -R $read_grp_info -I 250,50 ${DATA_DIR}/reference/hg19.fa.gz \
-	${DATA_DIR}/trimmed_fastq/trimmed_data_1P ${DATA_DIR}/trimmed_fastq/trimmed_data_2P \
-	> ${ALIGN_DIR}/${FILE_NAME}_aligned.sam
+
+############### ORIGINAL HERE  ########################
+#echo "**** bwa mem"
+#bwa mem -t 4 -v 1 -R $read_grp_info -I 250,50 ${DATA_DIR}/reference/hg19.fa.gz \
+#       ${DATA_DIR}/trimmed_fastq/trimmed_data_1P ${DATA_DIR}/trimmed_fastq/trimmed_data_2P \
+#       > ${ALIGN_DIR}/${FILE_NAME}_aligned.sam
+
+############## FINISHED ORIGINAL   ########################
+
+
+
+
+###############  ALTERNATIVE HERE  ########################
+#
+## using bowtie2 as an alternative alignment tool
+
+echo "**** ALTERNATIVE ALIGNER: bowtie2 "
+
+echo "**** build bowtie2 index"
+# first create the necessary bowtie index files for the reference genome:
+# Creating the bowtie index takes over an hour to run
+
+#bowtie2-build ${DATA_DIR}/reference/hg19.fa ${DATA_DIR}/reference/hg19
+
+echo "**** run bowtie2 aligner"
+# -x is the bowtie reference prefix as built in the previous step
+# -1 and -2 are the trimmed, paired reads
+# -S is the output file
+bowtie2 -x ${DATA_DIR}/reference/hg19 \
+        -1 ${DATA_DIR}/trimmed_fastq/trimmed_data_1P -2 ${DATA_DIR}/trimmed_fastq/trimmed_data_2P \
+        -S ${ALIGN_DIR}/${FILE_NAME}_aligned.sam
+
+
+############## FINISHED ALTERNATIVE ######################
 
 
 echo "**** convert sam to bam"
