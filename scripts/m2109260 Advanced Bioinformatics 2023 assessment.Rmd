@@ -3,28 +3,474 @@ title: "Advanced Bioinformatics 2023 assessment"
 author: "m2109260"
 date: "`r Sys.Date()`"
 output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "C:/Users/hooll/OneDrive - King's College London/Documents/advanced bioinformatics/")
 ```
 
-## R Markdown
+# General R Assessment
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+### Task 3.1
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+```{r}
+sum(5:55)
+```
+
+### Task 3.2
+
+```{r results='hold'}
+sumfun <- function(n) {
+  return(sum(5:n))
+}
+paste("sumfun(10): ",sumfun(10))
+paste("sumfun(20): ",sumfun(20))
+paste("sumfun(100): ",sumfun(100))
+
+
+```
+
+### Task 3.3
+
+First define a vector with the initial 2 terms in then, for the
+remaining 10 terms, I call a for loop that:
+
+1.  gets the last 2 terms in the sequence vector so far using
+    `tail( <vec>, 2)`
+
+2.  sums the 2 terms
+
+3.  appends the sum of the 2 terms to the sequence vector
+    `append(fibonacci, sum(tail(fibonacci,2)))`
+
+```{r}
+
+
+fibonacci <- c(1,1)
+for(x in 1:10){
+  fibonacci<-append(fibonacci, sum(tail(fibonacci,2)))
+}
+print(fibonacci)
+
+```
+
+### Task 3.4
+
+First I assign the mtcars package to a variable and change the gear
+column to a factor (this is necessary to use it to group data in
+ggplot).
+
+Then I pass the dataframe to ggplot with aesthetic data: setting the x
+axis to group the y axis (mpg) by gear number.
+
+Finally I add a boxplot layer.
+
+```{r mtcars}
+
+library(ggplot2)
+
+df <-mtcars
+df$gear <- as.factor(df$gear)
+
+ggplot(data=df, aes(x=gear,y=mpg,fill=gear)) + 
+  geom_boxplot()  
+
+```
+
+### Task 3.5
 
 ```{r cars}
-summary(cars)
+df <- cars
+distance <- lm(dist ~ speed, data=df)
 ```
 
-## Including Plots
+#### [Results]{.underline}
 
-You can also embed plots, for example:
+-   **Fitted Slope:** `r coef(distance)[2]`
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+-   **Intercept:** `r coef(distance)[1]`
+
+```{r}
+distance$coefficients
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+#### [Units]{.underline}
+
+-   **speed**: miles per hour (mph)
+
+-   **distance**: feet
+
+```{r eval=FALSE}
+?cars
+
+```
+
+### Task 3.6
+
+geom_smooth plots the line of best fit with formula y\~x so here we are
+showing dist\~speed
+
+```{r}
+ggplot(df, aes(x=speed, y=dist)) + 
+  geom_point() +
+  geom_smooth(method="lm")
+
+
+```
+
+### Task 3.7
+
+*Again using the cars dataset, now use linear regression (lm) to
+estimate the average reaction time for the driver to start breaking (in
+seconds). To simplify matters you may assume that once breaking
+commences, breaking distance is proportional to the square of the
+speed.*
+
+### look at residuals and fitted.values
+
+1.  Convert everything to the same units
+
+```{r}
+#mph to miles per second (divide by 3600)
+#df$speed <- df$speed / 3600
+#miles per second to feet per second (more reasonable numbers)
+#df$speed <- df$speed * 5280
+
+```
+
+2.  predict breaking distance from speed squared
+
+```{r}
+breakdist <-  lm(dist ~ (speed*speed), data=df)
+coef(breakdist)
+
+```
+
+Do you get reasonable results?
+
+Finally, use ggplot to plot the data points and the fitted relationship.
+
+```{r}
+ggplot(df, aes(x=(speed*speed), y=dist)) + 
+  geom_point() +
+  geom_smooth(method="lm")
+
+
+```
+
+------------------------------------------------------------------------
+
+# RNA-Seq Assessment
+
+### Task 3.8
+
+*File paths assume that the current wd/root.dir is set the the main
+folder containing the exercises subfolder ( and LMS_RNASeq.html)*
+
+```{r}
+#read in the count data
+all_counts <- read.csv(file = "RNAseq/exercises/data/exercise1_counts.csv", 
+                       header = T, row.names = 1)
+
+# Read the sample description
+sam_des <- read.table("RNAseq/exercises/data/exercise1_sample_description.info", 
+                      sep = "\t", header = TRUE)
+
+```
+
+### Task 3.9
+
+Create a data frame from the sample descriptions then check that the
+dimensions match (every sample in the count data has a row in the sample
+descriptions).
+
+```{r}
+# create column data from sample description
+col_data <- data.frame(sample = sam_des$sample, 
+                       condition = sam_des$condition, batch = sam_des$batch)
+head(col_data)
+# Check dimensions
+
+# check that the number of columns in all_counts 
+# is the same as the number of rows in col_data
+ncol(all_counts) == nrow(col_data)
+```
+
+The following was used in the exercise as a way of checking dimensions.
+It evaluates to true but it doesn't actually check the dimensions
+because `col_data$name` is `NULL` .
+
+```{r}
+all(colnames(all_counts) == col_data$name)
+```
+
+#### Convert to factors
+
+*not sure if we need to do this or not*
+
+```{r}
+#col_data$sample <- as.factor(col_data$sample)
+col_data$condition <- as.factor(col_data$condition)
+col_data$batch <- as.factor(col_data$batch)
+```
+
+### Task 3.10
+
+`design = ~condition` tells DESeq to perform differential expression
+where the different scenarios are based on the levels in the condition
+column of `col_data` (how the gene expression levels vary by condition).
+In this case we are comparing all samples denoted as FFa (control) to
+all samples KOa (Knock Out scenario A), FFa to KOb (Knock Out scenario
+B) and also KOa to KOb.
+
+```{r}
+# Load DESeq2 library
+# use suppressPackageStartupMessages to avoid unnecessary output in html file
+suppressPackageStartupMessages(library(DESeq2))
+
+#check all data stored as matrix/dataframe
+#class(all_counts)
+#class(col_data)
+
+# Create DESeq object
+dds <- DESeqDataSetFromMatrix(countData = all_counts, 
+                              colData = col_data, 
+                              design =~ condition)
+
+dds
+```
+
+### Apply normalisation
+
+this is not explicitly listed but may be necessary
+
+```{r}
+# Apply DESeq normalization
+dds <- DESeq(dds)
+```
+
+### Task 3.11
+
+rlog - Regularized Log Transformation
+
+```{r}
+rld <- rlog(dds)
+```
+
+Variance Stabilizing Transformation
+
+```{r}
+# Regularized log transformation
+vsd <- varianceStabilizingTransformation(dds)
+```
+
+### Task 3.12
+
+prepare data
+
+```{r}
+# Load pheatmap library
+suppressPackageStartupMessages(library("pheatmap"))
+
+# Get dds normalized counts
+dds_counts <- counts(dds, normalized = TRUE)
+
+# Get top 40 expressed genes
+select <- order(rowMeans(dds_counts), decreasing = TRUE)[1:40]
+
+```
+
+**rlog**-based heatmap of count matrix based on the top 40 highly
+expressed genes
+
+```{r}
+# Heatmap of the rlog transformed data
+pheatmap(assay(rld)[select, ])
+```
+
+**vsd**-based heatmap of count matrix based on the top 40 highly
+expressed genes
+
+```{r}
+# Heatmap of the vst transformed data
+pheatmap(assay(vsd)[select, ])
+```
+
+### Task 3.13
+
+Sample Distance Matrix - get sample-to-sample distances by applying dist
+to transpose of count matrix
+
+```{r}
+# Compute SDM from rlog transformed data
+sample_dist <- dist(t(assay(rld)))
+
+# Get SDM in matrix form
+sdm <- as.matrix(sample_dist)
+
+# Load library
+suppressPackageStartupMessages(library("RColorBrewer"))
+
+# Add row names for clear plot
+rownames(sdm) <- rld$condition
+colnames(sdm) <- NULL
+
+# Add colors
+colors <- colorRampPalette(rev(brewer.pal(9, "Blues")))(255)
+
+
+# Plot heatmap
+pheatmap(sdm,
+         clustering_distance_rows = sample_dist,
+         clustering_distance_cols = sample_dist,
+         show_rownames = TRUE,
+         col = colors)
+```
+
+### Task 3.14
+
+PC1: 70% variance
+
+PC2: 13% variance
+
+```{r}
+# PCA plot on the rld transformed data
+plotPCA(rld, intgroup = "condition")
+```
+
+### Task 3.15
+
+*3.15. Repeat the PCA, this time using VST method and compare the plots
+with the ones obtained using rlog method.(1 pts)*
+
+```{r}
+# PCA plot on the vsd transformed data
+plotPCA(vsd, intgroup = "condition")
+```
+
+------------------------------------------------------------------------
+
+# ChIP-Seq Assessment
+
+In this assessment, we will:
+
+-   read in two replicate sets of CHIP-seq peaks from the Myc Encode
+    dataset
+
+-   extract sequences underneath subsets of peaks
+
+-   write these sequences out to a FASTA file
+
+-   upload the FASTA file to Meme-ChIP to detect motifs underneath of
+    these peaks.
+
+### Task 3.16
+
+*3.16. Read in the two Myc Mel peakset replicates and create the common
+peakset as we did for our previous exercise. **(1pts)***
+
+```{r}
+suppressPackageStartupMessages(library(GenomicRanges))
+
+melPeak_Rep1 <- read.delim("ChipSeq/data/MacsPeaks/mycch12rep1_peaks.xls",sep="\t",comment.char = "#")
+melPeak_Rep2 <- read.delim("ChipSeq/data/MacsPeaks/mycch12rep2_peaks.xls",sep="\t",comment.char = "#")
+
+#create Genomic Range objects from the data files
+melRep1_GR <- GRanges(
+  seqnames=melPeak_Rep1[,"chr"],
+  IRanges(melPeak_Rep1[,"start"],
+          melPeak_Rep1[,"end"]
+  )
+)
+
+melRep2_GR <- GRanges(
+  seqnames=melPeak_Rep2[,"chr"],
+  IRanges(melPeak_Rep2[,"start"],
+          melPeak_Rep2[,"end"]
+  )
+)
+
+#add 2 metadata colums
+mcols(melRep1_GR) <- melPeak_Rep1[,c("abs_summit", "fold_enrichment")]
+mcols(melRep2_GR) <- melPeak_Rep2[,c("abs_summit", "fold_enrichment")]
+
+```
+
+now reduce to find the common peaks
+
+```{r}
+#reduce instead of overlapping
+allPeaks <- c(melRep1_GR,melRep2_GR)
+allPeaksReduced <- reduce(allPeaks)
+
+commonPeaks <- allPeaksReduced[allPeaksReduced %over% melRep1_GR 
+                               & allPeaksReduced %over% melRep2_GR]
+```
+
+alternative approach to finding common peaks that lets us keep the
+metadata
+
+```{r}
+OnlyInRep1_PeakSet <- melRep1_GR[!melRep1_GR %over% melRep2_GR]
+OnlyInRep2_PeakSet <- melRep2_GR[!melRep2_GR %over% melRep1_GR]
+
+#all peaks in Rep1 that have an overlap with peaks in Rep2
+commonPeaks_withMeta <- melRep1_GR[melRep1_GR %over% melRep2_GR]
+```
+
+### Task 3.17
+
+Rank peaks by their fold enrichment then select only the top 500 (with
+highest fold increases)
+
+```{r}
+
+commonPeaks_withMeta <- commonPeaks_withMeta[order(
+              mcols(commonPeaks_withMeta)$fold_enrichment,decreasing=TRUE)]
+commonPeaks_top <- commonPeaks_withMeta[1:500]
+
+#resize the peaks to 200bp around the centre of the peak region
+commonPeaks_top <- resize(commonPeaks_top,200,fix="center")
+
+```
+
+### Task 3.18
+
+Extract the sequences underneath the file
+
+```{r}
+suppressPackageStartupMessages(library(BSgenome))
+suppressPackageStartupMessages(library(BSgenome.Mmusculus.UCSC.mm9))
+
+#get the mouse genome (mus musculus) and reformat common peaks style to match
+genome <- BSgenome.Mmusculus.UCSC.mm9
+seqlevelsStyle(commonPeaks_top) <- "UCSC"
+
+#getSeq function returns a DNAStringSet object containing sequences under peaks
+commonPeaksSequences <- getSeq(genome,GRanges(commonPeaks_top))
+
+#name each peak sequence with a Unique ID (required by MEME-Chip) in the format peak_<start-location>_<end-location>
+names(commonPeaksSequences) <- paste0("peak_",seqnames(commonPeaks_top),"_",
+                                      start(commonPeaks_top),
+                                      "-",
+                                      end(commonPeaks_top))
+```
+
+Write to a FASTA file
+
+```{r}
+writeXStringSet(commonPeaksSequences,file="consensusPeaks.fa")
+```
+
+### Task 3.19
+
+[MEME-ChIP
+Results](https://meme-suite.org/meme//opal-jobs/appMEMECHIP_5.5.11680438221647-1883604069/meme-chip.html "Task 3.19 MEME-ChIP Results from Meme Suite"){.uri}
+
+[![Task 3.19 Meme Suite MEME-ChIP
+Results](images/Meme-ChIP-Results-mouse.png)](https://meme-suite.org/meme//opal-jobs/appMEMECHIP_5.5.11680438221647-1883604069/meme-chip.html)
