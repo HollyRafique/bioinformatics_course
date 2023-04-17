@@ -316,10 +316,10 @@ fi
 
 #install annovar databases using the following commands:
 #these commands are commented out in the script as it does not need to be repeated each time the script is run
-#ideally we would use avsnp150 database instead of snp138 as it is the latest version 
+#ideally we would use avsnp150 database instead of snp130 as it is the latest version 
 #but it is over double the size - avsnp150 is unfeasibly large at 12 GB when decompressed
 
-#$ANN_DIR/annotate_variation.pl -downdb -buildver hg19 -webfrom annovar snp138 $ANN_DIR/humandb/
+#$ANN_DIR/annotate_variation.pl -downdb -buildver hg19 -webfrom annovar snp130 $ANN_DIR/humandb/
 #$ANN_DIR/annotate_variation.pl -downdb -buildver hg19 -webfrom annovar refGene $ANN_DIR/humandb/
 
 
@@ -343,7 +343,7 @@ $ANN_DIR/convert2annovar.pl -format vcf4 $RESULTS_DIR/${FILE_NAME}_filtered.vcf.
 #$ANN_DIR/table_annovar.pl $RESULTS_DIR/${FILE_NAME}_filtered.avinput \
 #        $ANN_DIR/humandb/ -buildver hg19 \
 #        -out $RESULTS_DIR/annovar/${FILE_NAME}_annovar -remove \
-#        -protocol refGene,avsnp150,clinvar_20180603,exac03,dbnsfp31a_interpro \
+#        -protocol refGene,snp130,clinvar_20180603,exac03,dbnsfp31a_interpro \
 #        -operation g,f,f,f,f -otherinfo -nastring . -csvout
 
 
@@ -355,30 +355,33 @@ $ANN_DIR/convert2annovar.pl -format vcf4 $RESULTS_DIR/${FILE_NAME}_filtered.vcf.
 #filter to identify variants not in dbSNP
 #those IN dbSNP will go into _dropped
 #variants not in dbSNP will go into _filtered
-$ANN_DIR/annotate_variation.pl -filter -dbtype avsnp150 -buildver hg19 \
+echo "*** filter dbSNP"
+$ANN_DIR/annotate_variation.pl -filter -dbtype snp130 -buildver hg19 \
 	-outfile $RESULTS_DIR/annovar/${FILE_NAME}_annovar.dbSNP \
 	$RESULTS_DIR/annovar/${FILE_NAME}_filtered.avinput  $ANN_DIR/humandb/
 
 #then filter to only keep those with exonic function (regionanno)
+echo "*** filter exonic"
 $ANN_DIR/annotate_variation.pl -geneanno -buildver hg19 -dbtype refGene \
 	-outfile $RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG \
-	$RESULTS_DIR/annovar/${FILE_NAME}_annovar.dbSNP.hg19_avsnp150_filtered $ANN_DIR/humandb/
+	$RESULTS_DIR/annovar/${FILE_NAME}_annovar.dbSNP.hg19_snp130_filtered $ANN_DIR/humandb/
 
 #remove the first 3 columns that were added by annnotate_variation -geneanno
 #necessary to be able to run table_annovar
+
 cut -f 4- -d$'\t' $RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.exonic_variant_function \
 	> $RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.new_evf
 
 #finally add annotations for remaining variants
-$ANN_DIR/table_annovar.pl $RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.new_evf \	
-	$ANN_DIR/humandb/ -buildver hg19 \
+echo "*** create annovar table"
+$ANN_DIR/table_annovar.pl -buildver hg19 \
 	-out $RESULTS_DIR/annovar/${FILE_NAME}_annovar -remove \
 	-protocol refGene,knownGene,exac03,clinvar_20180603 \
-	-operation g,g,f,f -otherinfo -nastring . -csvout
+	-operation g,g,f,f -otherinfo -nastring . -csvout \
+	$RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.new_evf $ANN_DIR/humandb/ 
+echo -e "\n\n"
 
-
-
-##########  snpEFF   ###############
+#########  snpEFF   ###############
 
 echo "B - snpEFF"
 ## 1) B - Annotate using snpEFF
