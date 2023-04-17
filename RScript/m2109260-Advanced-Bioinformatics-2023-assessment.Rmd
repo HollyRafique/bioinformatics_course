@@ -169,8 +169,12 @@ ggplot(df, aes(x=(speed*speed), y=dist)) +
 
 ### Task 3.8
 
-*File paths assume that the current wd/root.dir is set the the main
+*File paths assume that the current wd/root.dir is set to the main
 folder containing the exercises subfolder ( and LMS_RNASeq.html)*
+
+read in the data files and indicate that both contain headers. The
+sample description table is tab-delimited so we set the separator to
+"\\t" (tab character).
 
 ```{r}
 #read in the count data
@@ -185,14 +189,15 @@ sam_des <- read.table("RNAseq/exercises/data/exercise1_sample_description.info",
 
 ### Task 3.9
 
-Create a data frame from the sample descriptions then check that the
-dimensions match (every sample in the count data has a row in the sample
-descriptions).
+Create a data frame col_data from the sample descriptions then check
+that the dimensions match (every sample in the count data has a row in
+the sample descriptions).
 
 ```{r}
 # create column data from sample description
 col_data <- data.frame(sample = sam_des$sample, 
-                       condition = sam_des$condition, batch = sam_des$batch)
+                       condition = sam_des$condition,
+                       batch = sam_des$batch)
 head(col_data)
 # Check dimensions
 
@@ -211,7 +216,7 @@ all(colnames(all_counts) == col_data$name)
 
 #### Convert to factors
 
-*not sure if we need to do this or not*
+Converting the columns to factors is necessary for DESeq.
 
 ```{r}
 #col_data$sample <- as.factor(col_data$sample)
@@ -247,8 +252,6 @@ dds
 
 ### Apply normalisation
 
-this is not explicitly listed but may be necessary
-
 ```{r}
 # Apply DESeq normalization
 dds <- DESeq(dds)
@@ -271,7 +274,9 @@ vsd <- varianceStabilizingTransformation(dds)
 
 ### Task 3.12
 
-prepare data
+First we setup the data: get the counts then order so the most highly
+expressed appear first. Then select only the first 40; ie the top 40
+most highly expressed genes.
 
 ```{r}
 # Load pheatmap library
@@ -304,7 +309,7 @@ pheatmap(assay(vsd)[select, ])
 ### Task 3.13
 
 Sample Distance Matrix - get sample-to-sample distances by applying dist
-to transpose of count matrix
+to transpose of count matrix. Add row names then plot as a heatmap.
 
 ```{r}
 # Compute SDM from rlog transformed data
@@ -345,8 +350,14 @@ plotPCA(rld, intgroup = "condition")
 
 ### Task 3.15
 
-*3.15. Repeat the PCA, this time using VST method and compare the plots
-with the ones obtained using rlog method.(1 pts)*
+PC1: 69%
+
+PC2: 14%
+
+The values in the KO groups appear to have the same spread and
+distribution in both plots but are slightly higher in the rld plot. The
+values in the control group are in a similar range in both plots but
+have a slightly different distribution.
 
 ```{r}
 # PCA plot on the vsd transformed data
@@ -357,22 +368,14 @@ plotPCA(vsd, intgroup = "condition")
 
 # ChIP-Seq Assessment
 
-In this assessment, we will:
-
--   read in two replicate sets of CHIP-seq peaks from the Myc Encode
-    dataset
-
--   extract sequences underneath subsets of peaks
-
--   write these sequences out to a FASTA file
-
--   upload the FASTA file to Meme-ChIP to detect motifs underneath of
-    these peaks.
-
 ### Task 3.16
 
-*3.16. Read in the two Myc Mel peakset replicates and create the common
-peakset as we did for our previous exercise. **(1pts)***
+The GenomicRanges package allows us to create GRanges from the peak
+sequence data, which provides a useful method of representing and
+manipulating sequences (eg setting both the sequence names and the range
+of the peaks). Next we can add metadata columns to the GRanges objects:
+the location of the summit of the peak and the fold enrichment (how
+over-represented the sequence is compared to random).
 
 ```{r}
 suppressPackageStartupMessages(library(GenomicRanges))
@@ -401,7 +404,8 @@ mcols(melRep2_GR) <- melPeak_Rep2[,c("abs_summit", "fold_enrichment")]
 
 ```
 
-now reduce to find the common peaks
+Now we can reduce to find the common peaks. This approach produces a
+more accurate intersection but we lose all the metadata.
 
 ```{r}
 #reduce instead of overlapping
@@ -412,8 +416,8 @@ commonPeaks <- allPeaksReduced[allPeaksReduced %over% melRep1_GR
                                & allPeaksReduced %over% melRep2_GR]
 ```
 
-alternative approach to finding common peaks that lets us keep the
-metadata
+An alternative approach to finding common peaks that lets us keep the
+metadata, is to evaluate the overlaps of peaks.
 
 ```{r}
 OnlyInRep1_PeakSet <- melRep1_GR[!melRep1_GR %over% melRep2_GR]
@@ -425,8 +429,11 @@ commonPeaks_withMeta <- melRep1_GR[melRep1_GR %over% melRep2_GR]
 
 ### Task 3.17
 
-Rank peaks by their fold enrichment then select only the top 500 (with
-highest fold increases)
+Rank peaks by their fold enrichment, in decreasing order so the most
+enriched are first/top, then select only the top 500 (with highest fold
+increases).
+
+Finally resize the peaks to 200bp around the centre of the peak.
 
 ```{r}
 
@@ -441,7 +448,14 @@ commonPeaks_top <- resize(commonPeaks_top,200,fix="center")
 
 ### Task 3.18
 
-Extract the sequences underneath the file
+First we get the mouse genome from UCSC and reformat our commonPeaks_top
+shortlist of most significantly expressed peaks so that the formats
+match.
+
+Then we use the getSeq function to get the sequences from the mouse
+genome that are present at the genomic locations denoted by our set of
+peaks. Finally we give each peak a name that acts as a Unique ID, as
+required by MEME-Chip.
 
 ```{r}
 suppressPackageStartupMessages(library(BSgenome))
@@ -461,10 +475,12 @@ names(commonPeaksSequences) <- paste0("peak_",seqnames(commonPeaks_top),"_",
                                       end(commonPeaks_top))
 ```
 
-Write to a FASTA file
+Write the sequences (for the top 500 peaks) to a FASTA file to upload to
+MEME-Chip.
 
 ```{r}
 writeXStringSet(commonPeaksSequences,file="consensusPeaks.fa")
+
 ```
 
 ### Task 3.19
