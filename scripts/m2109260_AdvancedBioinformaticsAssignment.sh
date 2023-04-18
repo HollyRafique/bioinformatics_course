@@ -381,6 +381,7 @@ $ANN_DIR/table_annovar.pl -buildver hg19 \
 	$RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.new_evf $ANN_DIR/humandb/ 
 echo -e "\n\n"
 
+
 #########  snpEFF   ###############
 
 echo "B - snpEFF"

@@ -17,6 +17,9 @@ rm -r *
 echo "emptying trimmed"
 cd $DATA_DIR/trimmed_fastq
 rm -r *
+echo "emptying untrimmed"
+cd $DATA_DIR/untrimmed_fastq
+rm -r *
 
 
 
