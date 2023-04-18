@@ -25,7 +25,6 @@ ALIGN_DIR="${DATA_DIR}/aligned_data"
 STATS_DIR="${DATA_DIR}/stats"
 
 
-if false; then 
 
 ##check the folders exist - if they don't then create them
 if [ ! -d "${ALIGN_DIR}" ]; then
@@ -52,8 +51,8 @@ R1=NGS0001.R1.fastq
 R2=NGS0001.R2.fastq
 
 ##Download the data
-#commented out as it is unnecessary to do this every time we run the script
-#wget https://s3-eu-west-1.amazonaws.com/workshopdata2017/annotation.bed
+#can be cmmented out as it is unnecessary to do this every time we run the script
+wget https://s3-eu-west-1.amazonaws.com/workshopdata2017/annotation.bed
 
 cd untrimmed_fastq
 wget https://s3-eu-west-1.amazonaws.com/workshopdata2017/NGS0001.R1.fastq.qz
@@ -86,11 +85,12 @@ rm ${DATA_DIR}/untrimmed_fastq/$R2
 
 
 
-## FastQC
+## FastQC to check the trimming removed adapter sequences and low quality reads
 echo -e "****fastqc 2\n\n"
 fastqc -t 4 ${DATA_DIR}/trimmed_fastq/trimmed_data_1P \
 	${DATA_DIR}/trimmed_fastq/trimmed_data_2P \
 	> $STATS_DIR/trimmed_fastqc.log
+
 
 
 ###only create the trimmed reads folder in the Results Dir
@@ -132,9 +132,6 @@ echo "**** convert sam to bam"
 # Convert SAM to BAM
 samtools view -h -b ${ALIGN_DIR}/${FILE_NAME}_aligned.sam > ${ALIGN_DIR}/${FILE_NAME}_aligned.bam 
 
-#samtools view -h -b ${ALIGN_DIR}/${FILE_NAME}_aligned.sam \
-#	| samtools sort > ${ALIGN_DIR}/${FILE_NAME}_sorted.bam
-
 
 #cleanup - sam file no longer needed
 rm ${ALIGN_DIR}/${FILE_NAME}_aligned.sam  
@@ -143,7 +140,6 @@ rm ${ALIGN_DIR}/${FILE_NAME}_aligned.sam
 echo "**** sort and index bam"
 # sort bam and create index (.bai file)
 samtools sort ${ALIGN_DIR}/${FILE_NAME}_aligned.bam  > ${ALIGN_DIR}/${FILE_NAME}_sorted.bam 
-
 samtools index ${ALIGN_DIR}/${FILE_NAME}_sorted.bam
 
 
@@ -158,11 +154,10 @@ echo -e "\n\n"
 
 ## 3) Post-Alignment Read Filtering
 echo "**** post-alignment read filtering"
-samtools view -F 1796  -q 20 -o $ALIGN_DIR/${FILE_NAME}_sorted_filtered.bam $ALIGN_DIR/${FILE_NAME}_sorted_marked.bam
+samtools view -F 1796  -q 20 -o $ALIGN_DIR/${FILE_NAME}_sorted_filtered.bam \
+	$ALIGN_DIR/${FILE_NAME}_sorted_marked.bam
 
 samtools index ${ALIGN_DIR}/${FILE_NAME}_sorted_filtered.bam
-
-
 
 
 ## 4) Generate Alignment Statistics
@@ -246,34 +241,18 @@ echo "** Step 2.4 Variant Calling *"
 
 
 ################# ORIGINAL ######################################
-## 1) Call Variants using Freebayes restricting the analysis to the regions in the bed file provided 
-#index it with samtools faidx, call variants with Freebayes,
-#compress the resulting variant file (VCF) and index the VCF with tabix:
-
-#decompress the reference genome
+## 1) Call Variants using Freebayes  
 #zcat $DATA_DIR/reference/hg19.fa.gz > $DATA_DIR/reference/hg19.fa
 #samtools faidx $DATA_DIR/reference/hg19.fa
-
-bgzip -c $DATA_DIR/reference/hg19.fa > $DATA_DIR/reference/hg19.fa.bgz
-samtools faidx $DATA_DIR/reference/hg19.fa.bgz
-
- 
-
-freebayes --bam $ALIGN_DIR/${FILE_NAME}_sorted_filtered.bam \
-	--fasta-reference $DATA_DIR/reference/hg19.fa.bgz \
-	--vcf $RESULTS_DIR/${FILE_NAME}_freebayes.vcf
-
-#zip up the vcf to reduce storage
+#bgzip -c $DATA_DIR/reference/hg19.fa > $DATA_DIR/reference/hg19.fa.bgz
+#samtools faidx $DATA_DIR/reference/hg19.fa.bgz
+#freebayes --bam $ALIGN_DIR/${FILE_NAME}_sorted_filtered.bam \
+#	--fasta-reference $DATA_DIR/reference/hg19.fa.bgz \
+#	--vcf $RESULTS_DIR/${FILE_NAME}_freebayes.vcf
 #bgzip $RESULTS_DIR/${FILE_NAME}.vcf
-
-#index the variant file
 #tabix -p vcf $RESULTS_DIR/${FILE_NAME}.vcf.gz
 #################################################################
 
-#####************ DELETE THIS
-  
-
-fi
 
 #################    ALTERNATIVE   ##############################
 
@@ -282,13 +261,14 @@ fi
 #bcftools mpileup -Ou outputs uncompressed binary format - this is faster when piping to the call command 
 #bcftools call -mv m:multiallelic AND v:variant-only calling
 #bcftools call -Oz flag causes the output to be compressed with bgzip and indexed
+#adding FORMAT/SP to quantify Strand Bias for filtering
 
 bcftools mpileup -a FORMAT/SP -Ou -f $DATA_DIR/reference/hg19.fa.bgz \
 	$ALIGN_DIR/${FILE_NAME}_sorted_filtered.bam \
 	| bcftools call -mv -Ov -o $RESULTS_DIR/${FILE_NAME}.vcf
 
 bgzip $RESULTS_DIR/${FILE_NAME}.vcf
-tabix -p vcf $RESULTS_DIR/${FILE_NAME}.vcf
+tabix -p vcf $RESULTS_DIR/${FILE_NAME}.vcf.gz
 
 
 
@@ -298,20 +278,21 @@ tabix -p vcf $RESULTS_DIR/${FILE_NAME}.vcf
 
 ## 2) Quality Filter Variants using your choice of filters 
 
+#The quality filters need to change to accommodate the different
+#fields created by bcftools
+
 #We will apply the following filters to the bcftools output:
 #QUAL > 1: removes extremely low quality sites 
 #QUAL / AC > 1 : the bcftools equivalent of AO is AC
 
-#not sure if there are alternatives in bcftools
 #RPB > 0 : Read Position Bias - bigger is better
 #DP[:3] and DP[:4] : # high quality forward strand and reverse strand  
 #"QUAL > 1 & QUAL / AC > 10 & SAF > 0 & SAR > 0 & RPR > 1 & RPL > 1"  
 echo "**** starting vcffilter"
 
-vcffilter -f "QUAL > 1 & QUAL / AC > 10 & RPB > 0 & DP[*:3] > 0 & DP[*:4]"  \
-       $RESULTS_DIR/${FILE_NAME}.vcf.gz > $RESULTS_DIR/${FILE_NAME}_filter.tmp.vcf
-
-
+vcffilter -f "QUAL > 1 & QUAL / AC > 10 & RPB < 0.05" \
+	-g "SP > 60" $RESULTS_DIR/${FILE_NAME}.vcf.gz \
+	> $RESULTS_DIR/${FILE_NAME}_filter.tmp.vcf
 
 
 echo "bedtools intersect"

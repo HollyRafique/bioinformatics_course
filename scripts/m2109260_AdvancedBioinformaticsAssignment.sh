@@ -74,7 +74,11 @@ fastqc -t 4 ${DATA_DIR}/untrimmed_fastq/*.fastq.qz \
 echo -e "****trimming\n\n"
 #nextera_path set at the start of the script in section 2.1
 
-trimmomatic PE -threads 4 -phred33 ${DATA_DIR}/untrimmed_fastq/${R1} ${DATA_DIR}/untrimmed_fastq/${R2} -baseout ${DATA_DIR}/trimmed_fastq/trimmed_data ILLUMINACLIP:$nextera_path TRAILING:25 MINLEN:50
+trimmomatic PE -threads 4 -phred33 \
+	${DATA_DIR}/untrimmed_fastq/${R1} \
+	${DATA_DIR}/untrimmed_fastq/${R2} \
+	-baseout ${DATA_DIR}/trimmed_fastq/trimmed_data \
+	ILLUMINACLIP:$nextera_path TRAILING:25 MINLEN:50
 
 chmod +x ${DATA_DIR}/trimmed_fastq/trimmed_data*
 
@@ -87,8 +91,8 @@ rm ${DATA_DIR}/untrimmed_fastq/$R2
 ## FastQC
 echo -e "****fastqc 2\n\n"
 fastqc -t 4 ${DATA_DIR}/trimmed_fastq/trimmed_data_1P \
-	${DATA_DIR}/trimmed_fastq/trimmed_data_2P \
-	> $STATS_DIR/trimmed_fastqc.log
+	${DATA_DIR}/trimmed_fastq/trimmed_data_2P
+
 
 
 ###only create the trimmed reads folder in the Results Dir
@@ -200,9 +204,13 @@ echo "****** 4 Depth of Coverage"
 # but annotation.bed is sorted lexographically
 # have to re-sort the annotation.bed to the same order as the bam files 
 # in order to use the -sorted option of bedtools coverage 
-bedtools sort -i $DATA_DIR/annotation.bed -faidx ${DATA_DIR}/reference/hg19_chrom.bed > $DATA_DIR/sorted_annotation.bed
+bedtools sort -i $DATA_DIR/annotation.bed -faidx ${DATA_DIR}/reference/hg19_chrom.bed \
+	> $DATA_DIR/sorted_annotation.bed
 
-bedtools coverage -sorted -g ${DATA_DIR}/reference/hg19_chrom.bed -a $DATA_DIR/sorted_annotation.bed -b $ALIGN_DIR/${FILE_NAME}_sorted_filtered.bam | sort -k5,5n > $STATS_DIR/DOC_sorted.bed
+bedtools coverage -sorted -g ${DATA_DIR}/reference/hg19_chrom.bed \
+	-a $DATA_DIR/sorted_annotation.bed \
+	-b $ALIGN_DIR/${FILE_NAME}_sorted_filtered.bam \
+	| sort -k5,5n > $STATS_DIR/DOC_sorted.bed
 
 
 # DOC Summary Statistics
@@ -367,7 +375,7 @@ $ANN_DIR/annotate_variation.pl -geneanno -buildver hg19 -dbtype refGene \
 	$RESULTS_DIR/annovar/${FILE_NAME}_annovar.dbSNP.hg19_snp130_filtered $ANN_DIR/humandb/
 
 #remove the first 3 columns that were added by annnotate_variation -geneanno
-#necessary to be able to run table_annovar
+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#necessary to be able to run table_annovar
 
 cut -f 4- -d$'\t' $RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.exonic_variant_function \
 	> $RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.new_evf
