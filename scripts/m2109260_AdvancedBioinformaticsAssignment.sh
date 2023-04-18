@@ -1,12 +1,11 @@
 #!/bin/bash
-#$1 R1 of paired-end fastq.gz
-#$2 R2 of paired-end fastq.gz
+
+# Requires the reference genome to be stored in DATA_DIR/reference
 #
-# requires the reference genome to be stored in DATA_DIR/reference
 # wget http://hgdownload.cse.ucsc.edu/goldenPath/hg19/bigZips/hg19.fa.gz
-# wget http://hgdownload.soe.ucsc.edu/goldenPath/hg19/bigZips/hg19.fa.gz
+#
 # This script requires that your reference index is created in advance by running 
-# bwa index ~/ngs_course/dnaseq/data/reference/hg19.fa.gz
+# bwa index ${DATA_DIR}/reference/hg19.fa.gz
 #
 
 ################## Step 2.1 INIT STEPS #################
@@ -54,11 +53,11 @@ R2=NGS0001.R2.fastq
 #commented out as it is unnecessary to do this every time we run the script
 #wget https://s3-eu-west-1.amazonaws.com/workshopdata2017/annotation.bed
 
-#cd untrimmed_fastq
+cd untrimmed_fastq
 #wget https://s3-eu-west-1.amazonaws.com/workshopdata2017/NGS0001.R1.fastq.qz
 #wget https://s3-eu-west-1.amazonaws.com/workshopdata2017/NGS0001.R2.fastq.qz
-#zcat NGS0001.R1.fastq.qz > $R1
-#zcat NGS0001.R1.fastq.qz > $R2
+zcat NGS0001.R1.fastq.qz > $R1
+zcat NGS0001.R2.fastq.qz > $R2
 cd
 
 
@@ -75,17 +74,25 @@ fastqc -t 4 ${DATA_DIR}/untrimmed_fastq/*.fastq.qz \
 echo -e "****trimming\n\n"
 #nextera_path set at the start of the script in section 2.1
 
-trimmomatic PE -threads 4 -phred33 ${DATA_DIR}/untrimmed_fastq/${R1} ${DATA_DIR}/untrimmed_fastq/${R2} -baseout ${DATA_DIR}/trimmed_fastq/trimmed_data ILLUMINACLIP:$nextera_path TRAILING:25 MINLEN:50
+trimmomatic PE -threads 4 -phred33 \
+	${DATA_DIR}/untrimmed_fastq/${R1} \
+	${DATA_DIR}/untrimmed_fastq/${R2} \
+	-baseout ${DATA_DIR}/trimmed_fastq/trimmed_data \
+	ILLUMINACLIP:$nextera_path TRAILING:25 MINLEN:50
 
 chmod +x ${DATA_DIR}/trimmed_fastq/trimmed_data*
+
+#cleanup the decompressed, untrimmed files
+rm ${DATA_DIR}/untrimmed_fastq/$R1
+rm ${DATA_DIR}/untrimmed_fastq/$R2
 
 
 
 ## FastQC
 echo -e "****fastqc 2\n\n"
 fastqc -t 4 ${DATA_DIR}/trimmed_fastq/trimmed_data_1P \
-	${DATA_DIR}/trimmed_fastq/trimmed_data_2P \
-	> $STATS_DIR/trimmed_fastqc.log
+	${DATA_DIR}/trimmed_fastq/trimmed_data_2P
+
 
 
 ###only create the trimmed reads folder in the Results Dir
@@ -177,6 +184,7 @@ echo "****** 2-idxstats"
 #Generate alignment statistics per chromosome (samtools)
 samtools idxstats $ALIGN_DIR/${FILE_NAME}_sorted_filtered.bam > $STATS_DIR/marked_and_filtered.idxstats
 
+
 echo "****** 3 insert size"
 echo -e "\n\n"
 #Determine the distribution of insert sizes - picard
@@ -192,13 +200,17 @@ echo "****** 4 Depth of Coverage"
 
 # need to use bedtools coverage -sorted option to reduce how much memory the process uses
 
-# bam file is sorted by hg19 chromosome order (for some reason puts chrX between chr7 and chr8)
+# bam file is sorted by hg19 chromosome order (which puts chrX between chr7 and chr8)
 # but annotation.bed is sorted lexographically
-# have to resort the annotation.bed to the same order as the bam files 
+# have to re-sort the annotation.bed to the same order as the bam files 
 # in order to use the -sorted option of bedtools coverage 
-bedtools sort -i $DATA_DIR/annotation.bed -faidx ${DATA_DIR}/reference/hg19_chrom.bed > $DATA_DIR/sorted_annotation.bed
+bedtools sort -i $DATA_DIR/annotation.bed -faidx ${DATA_DIR}/reference/hg19_chrom.bed \
+	> $DATA_DIR/sorted_annotation.bed
 
-bedtools coverage -sorted -g ${DATA_DIR}/reference/hg19_chrom.bed -a $DATA_DIR/sorted_annotation.bed -b $ALIGN_DIR/${FILE_NAME}_sorted_filtered.bam | sort -k5,5n > $STATS_DIR/DOC_sorted.bed
+bedtools coverage -sorted -g ${DATA_DIR}/reference/hg19_chrom.bed \
+	-a $DATA_DIR/sorted_annotation.bed \
+	-b $ALIGN_DIR/${FILE_NAME}_sorted_filtered.bam \
+	| sort -k5,5n > $STATS_DIR/DOC_sorted.bed
 
 
 # DOC Summary Statistics
@@ -225,9 +237,9 @@ awk 'BEGIN{count=0; sum=0; sumsq=0; min=0; max=0}
 
 
 #cleanup - essential to minimise storage requirements
-rm $ALIGN_DIR/${FILE_NAME}_sorted.*
-rm $ALIGN_DIR/${FILE_NAME}_aligned.*
-rm $ALIGN_DIR/${FILE_NAME}_sorted_marked*
+rm ${ALIGN_DIR}/${FILE_NAME}_sorted.*
+rm ${ALIGN_DIR}/${FILE_NAME}_aligned.*
+rm ${ALIGN_DIR}/${FILE_NAME}_sorted_marked*
 
 
 
@@ -284,7 +296,7 @@ bgzip $RESULTS_DIR/${FILE_NAME}_filtered.vcf
 tabix -p vcf $RESULTS_DIR/${FILE_NAME}_filtered.vcf.gz
 
 #cleanup
-rm $RESULTS_DIR/${FILE_NAME}_filter.tmp.vcf
+rm ${RESULTS_DIR}/${FILE_NAME}_filter.tmp.vcf
  
 
 
@@ -292,27 +304,93 @@ rm $RESULTS_DIR/${FILE_NAME}_filter.tmp.vcf
 
 echo "** Step 2.5 Annotation"
 
+
+############# ANNOVAR ###########
+ 
 echo "A - Annovar"
 ## 1) A - Annotate variants using ANNOVAR 
 ## 2) A - Perform basic variant prioritization: filter to exonic variants not seen in dbSNP
 
-## ***********  not finished
 
-#cd
-#wget *ANNOVAR LINK*
-#unzip *ANNOVAR TAR*
+# the annovar tar must be downloaded then the following run 
+# tar -zxvf annovar.latest.tar.gz
+
 ANN_DIR="/home/ubuntu/annovar"
+ 
+if [ ! -d "${RESULTS_DIR}/annovar" ]; then
+  mkdir -p ${RESULTS_DIR}/annovar
+fi
 
-#annotate_variation.pl -downdb -buildver hg19 -webfrom annovar refGene $ANN_DIR/humandb/
-#annotate_variation.pl -downdb -buildver hg19 -webfrom annovar avsnp150 $ANN_DIR/humandb/
+
+#install annovar databases using the following commands:
+#these commands are commented out in the script as it does not need to be repeated each time the script is run
+#ideally we would use avsnp150 database instead of snp130 as it is the latest version 
+#but it is over double the size - avsnp150 is unfeasibly large at 12 GB when decompressed
+
+#$ANN_DIR/annotate_variation.pl -downdb -buildver hg19 -webfrom annovar snp130 $ANN_DIR/humandb/
+#$ANN_DIR/annotate_variation.pl -downdb -buildver hg19 -webfrom annovar refGene $ANN_DIR/humandb/
+
+
+#there is insufficient space on the drive to download and extract all the databases
+#this represents a selection of some useful databases
+#$ANN_DIR/annotate_variation.pl -downdb -buildver hg19 -webfrom annovar knownGene $ANN_DIR/humandb/
+#$ANN_DIR/annotate_variation.pl -downdb -buildver hg19 -webfrom annovar clinvar_20180603 $ANN_DIR/humandb/
+#$ANN_DIR/annotate_variation.pl -downdb -buildver hg19 -webfrom annovar exac03 $ANN_DIR/humandb/
+#$ANN_DIR/annotate_variation.pl -downdb -buildver hg19 -webfrom annovar dbnsfp31a_interpro $ANN_DIR/humandb/
 
 #vcf to annovar
-#$ANN_DIR/convert2annovar.pl -format vcf4 $RESULTS_DIR/${FILE_NAME}_filtered.vcf.gz \
-#      > $RESULTS_DIR/${FILE_NAME}_filtered.avinput
+#get the filtered vcf into a format that annovar can read
+$ANN_DIR/convert2annovar.pl -format vcf4 $RESULTS_DIR/${FILE_NAME}_filtered.vcf.gz \
+      > $RESULTS_DIR/annovar/${FILE_NAME}_filtered.avinput
 
 
+#the most basic approach to annovar would be to run the table function to generate a csv file
+#the csv could then be loaded into a spreadsheet tool and filtered for the RefGene Exonic Function field
+#and filter out variants that do not have a dbSNP ID
+
+#$ANN_DIR/table_annovar.pl $RESULTS_DIR/${FILE_NAME}_filtered.avinput \
+#        $ANN_DIR/humandb/ -buildver hg19 \
+#        -out $RESULTS_DIR/annovar/${FILE_NAME}_annovar -remove \
+#        -protocol refGene,snp130,clinvar_20180603,exac03,dbnsfp31a_interpro \
+#        -operation g,f,f,f,f -otherinfo -nastring . -csvout
 
 
+#To do this programmatically we must first run a Filter to separate variants that have a dbSNP id  
+#next we perform Gene Annotation to obtain a file that only contains variants that have an exonic function
+#finally we can perform the table annotation to add additional annotations to the remaining variants
+
+
+#filter to identify variants not in dbSNP
+#those IN dbSNP will go into _dropped
+#variants not in dbSNP will go into _filtered
+echo "*** filter dbSNP"
+$ANN_DIR/annotate_variation.pl -filter -dbtype snp130 -buildver hg19 \
+	-outfile $RESULTS_DIR/annovar/${FILE_NAME}_annovar.dbSNP \
+	$RESULTS_DIR/annovar/${FILE_NAME}_filtered.avinput  $ANN_DIR/humandb/
+
+#then filter to only keep those with exonic function (regionanno)
+echo "*** filter exonic"
+$ANN_DIR/annotate_variation.pl -geneanno -buildver hg19 -dbtype refGene \
+	-outfile $RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG \
+	$RESULTS_DIR/annovar/${FILE_NAME}_annovar.dbSNP.hg19_snp130_filtered $ANN_DIR/humandb/
+
+#remove the first 3 columns that were added by annnotate_variation -geneanno
+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#necessary to be able to run table_annovar
+
+cut -f 4- -d$'\t' $RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.exonic_variant_function \
+	> $RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.new_evf
+
+#finally add annotations for remaining variants
+echo "*** create annovar table"
+$ANN_DIR/table_annovar.pl -buildver hg19 \
+	-out $RESULTS_DIR/annovar/${FILE_NAME}_annovar -remove \
+	-protocol refGene,knownGene,exac03,clinvar_20180603 \
+	-operation g,g,f,f -otherinfo -nastring . -csvout \
+	$RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.new_evf $ANN_DIR/humandb/ 
+echo -e "\n\n"
+
+
+#########  snpEFF   ###############
 
 echo "B - snpEFF"
 ## 1) B - Annotate using snpEFF
@@ -325,9 +403,11 @@ echo "B - snpEFF"
 
 EFF_DIR="/home/ubuntu/snpEff/"
 
-#download FULL dbSNP database
-# these commands should only be performed once as the file is very large
+if [ ! -d "${RESULTS_DIR}/snpEff" ]; then
+  mkdir -p ${RESULTS_DIR}/snpEff
+fi
 
+# these commands should only be performed once as the file is very large
 #download dbSNP database
 #cd $DATA_DIR/reference
 #wget https://ftp.ncbi.nih.gov/snp/organisms/human_9606_b151_GRCh37p13/VCF/00-common_all.vcf.gz
@@ -341,21 +421,21 @@ EFF_DIR="/home/ubuntu/snpEff/"
 ##1) snpsift annotate to add dbsnp ids
 echo "**** running snpsift annotate to add dbsnp ids"
 java -jar $EFF_DIR/SnpSift.jar annotate -id -exists "DBSNP" $DATA_DIR/reference/dbSNP-b151-small.vcf.bgz \
-        $RESULTS_DIR/${FILE_NAME}_filtered.vcf.gz  > $RESULTS_DIR/${FILE_NAME}_snpEff1_dbsnpids.vcf
+        $RESULTS_DIR/${FILE_NAME}_filtered.vcf.gz  > $RESULTS_DIR/snpEff/${FILE_NAME}_snpEff1_dbsnpids.vcf
 
 
 ##2) snpeff to annotate with functions against hg19/grch37 genome
 #java parameter -xmx8g to increase the memory available to the java virtual machine to 4g.
 echo "**** running snpeff"
-java -Xmx8g -jar $EFF_DIR/snpEff.jar hg19 $RESULTS_DIR/${FILE_NAME}_snpEff1_dbsnpids.vcf \
-	> $RESULTS_DIR/${FILE_NAME}_snpEff2_annotated.vcf
+java -Xmx8g -jar $EFF_DIR/snpEff.jar hg19 $RESULTS_DIR/snpEff/${FILE_NAME}_snpEff1_dbsnpids.vcf \
+	> $RESULTS_DIR/snpEff/${FILE_NAME}_snpEff2_annotated.vcf
 
 
 ##3) snpsift filter to remove non-exonic and any that exist in dbsnp - retain selected and remove the rest
 echo "**** running snpsift filter"
 java -jar $EFF_DIR/SnpSift.jar filter \
         "ANN[*].EFFECT has 'missense_variant' & !exists DBSNP"\
-         $RESULTS_DIR/${FILE_NAME}_snpEff2_annotated.vcf > $RESULTS_DIR/${FILE_NAME}_snpEff3_prioritised.vcf
+         $RESULTS_DIR/snpEff/${FILE_NAME}_snpEff2_annotated.vcf > $RESULTS_DIR/snpEff/${FILE_NAME}_snpEff3_prioritised.vcf
 
 
 
