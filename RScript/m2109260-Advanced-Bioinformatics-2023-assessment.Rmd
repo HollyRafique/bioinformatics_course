@@ -131,32 +131,58 @@ seconds). To simplify matters you may assume that once breaking
 commences, breaking distance is proportional to the square of the
 speed.*
 
+In Task 3.5 we set `df <- cars` so we will continue using `df`
+
 ### look at residuals and fitted.values
 
-1.  Convert everything to the same units
+1.  Convert everything to the same units:
+
+    **time:** seconds, **distance:** feet, **speed:** feet per second
 
 ```{r}
 #mph to miles per second (divide by 3600)
-#df$speed <- df$speed / 3600
+df$speed <- df$speed / 3600
 #miles per second to feet per second (more reasonable numbers)
-#df$speed <- df$speed * 5280
+df$speed <- df$speed * 5280
 
 ```
 
-2.  predict breaking distance from speed squared
+2.  predict breaking distance from speed squared - assume that the
+    intercept gives a representation of breaking distance before speed
+    is taken into account so we can remove that from the total distance
+    to estimate reaction_distance
 
 ```{r}
-breakdist <-  lm(dist ~ (speed*speed), data=df)
-coef(breakdist)
 
+breaking_model <- lm( dist ~ (speed*speed), data = df)
+breaking_model$coefficients
+
+df$reaction_dist <- df$dist + coef(breaking_model)[1]
 ```
 
-Do you get reasonable results?
+3.  reaction time = reaction distance / speed
+
+```{r}
+
+df$reaction_time <- df$reaction_dist / df$speed
+
+mean(df$reaction_time)
+```
+
+giving an average reaction time of: **0.87 seconds**
+
+4.  Model the reaction time based on speed
+
+```{r}
+reaction_model <- lm(reaction_time ~ speed, data=df)
+reaction_model$coefficients
+
+```
 
 Finally, use ggplot to plot the data points and the fitted relationship.
 
 ```{r}
-ggplot(df, aes(x=(speed*speed), y=dist)) + 
+ggplot(df, aes(x=speed, y=reaction_time)) + 
   geom_point() +
   geom_smooth(method="lm")
 
