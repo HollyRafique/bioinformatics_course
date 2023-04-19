@@ -244,10 +244,11 @@ rm ${ALIGN_DIR}/${FILE_NAME}_sorted.*
 #rm ${ALIGN_DIR}/${FILE_NAME}_aligned.*
 rm ${ALIGN_DIR}/${FILE_NAME}_sorted_marked*
 
+echo -e "\n\n"
 
 
 
-################### Section 2.4 VARIANT CALLING #################
+################## Section 2.4 VARIANT CALLING #################
 
 echo "** Step 2.4 Variant Calling *"
 
@@ -274,6 +275,12 @@ echo "** Step 2.4 Variant Calling *"
 #bcftools call -Oz flag causes the output to be compressed with bgzip and indexed
 #adding FORMAT/SP to quantify Strand Bias for filtering
 
+echo "converting hg19 to bgzip and index"
+gunzip -c $DATA_DIR/reference/hg19.fa.gz | bgzip -c > $DATA_DIR/reference/hg19.fa.bgz
+samtools faidx $DATA_DIR/reference/hg19.fa.bgz
+
+echo "*** calling bcftools"
+
 bcftools mpileup -a FORMAT/SP -Ou -f $DATA_DIR/reference/hg19.fa.bgz \
 	$ALIGN_DIR/${FILE_NAME}_sorted_filtered.bam \
 	| bcftools call -mv -Ov -o $RESULTS_DIR/${FILE_NAME}.vcf
@@ -281,6 +288,7 @@ bcftools mpileup -a FORMAT/SP -Ou -f $DATA_DIR/reference/hg19.fa.bgz \
 bgzip $RESULTS_DIR/${FILE_NAME}.vcf
 tabix -p vcf $RESULTS_DIR/${FILE_NAME}.vcf.gz
 
+echo -e "\nfinished variant calling\n\n"
 
 
 ## 2) Quality Filter Variants using your choice of filters 
