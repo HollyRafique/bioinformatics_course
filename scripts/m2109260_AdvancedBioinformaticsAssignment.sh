@@ -49,13 +49,18 @@ fi
 R1=NGS0001.R1.fastq
 R2=NGS0001.R2.fastq
 
-##Download the data
+##Download the data if it doesn't already exist
 #commented out as it is unnecessary to do this every time we run the script
-#wget https://s3-eu-west-1.amazonaws.com/workshopdata2017/annotation.bed
+if [ ! -f "${DATA_DIR}/annotation.bed" ]; then
+	echo "downloading annotation.bed"
+	wget https://s3-eu-west-1.amazonaws.com/workshopdata2017/annotation.bed
+else
+	echo "NOT downloading as annotation.bed already exists"
+fi
 
 cd untrimmed_fastq
-#wget https://s3-eu-west-1.amazonaws.com/workshopdata2017/NGS0001.R1.fastq.qz
-#wget https://s3-eu-west-1.amazonaws.com/workshopdata2017/NGS0001.R2.fastq.qz
+wget https://s3-eu-west-1.amazonaws.com/workshopdata2017/NGS0001.R1.fastq.qz
+wget https://s3-eu-west-1.amazonaws.com/workshopdata2017/NGS0001.R2.fastq.qz
 zcat NGS0001.R1.fastq.qz > $R1
 zcat NGS0001.R2.fastq.qz > $R2
 cd
@@ -85,10 +90,11 @@ chmod +x ${DATA_DIR}/trimmed_fastq/trimmed_data*
 #cleanup the decompressed, untrimmed files
 rm ${DATA_DIR}/untrimmed_fastq/$R1
 rm ${DATA_DIR}/untrimmed_fastq/$R2
+rm ${DATA_DIR}/untrimmed_fastq/${R1}.qz
+rm ${DATA_DIR}/untrimmed_fastq/${R2}.qz
 
 
-
-## FastQC
+# FastQC
 echo -e "****fastqc 2\n\n"
 fastqc -t 4 ${DATA_DIR}/trimmed_fastq/trimmed_data_1P \
 	${DATA_DIR}/trimmed_fastq/trimmed_data_2P
@@ -107,7 +113,6 @@ mv ${DATA_DIR}/trimmed_fastq/*fastqc* ${RESULTS_DIR}/fastqc_trimmed_reads/
 echo -e "\n\n"
 
 
-
 ################## Section 2.3 ALIGNMENT ##################
 
 echo "** Step 2.3 Alignment *"
@@ -124,19 +129,12 @@ echo "** Step 2.3 Alignment *"
 
 read_grp_info="@RG\tID:11V6WR1.111.D1375ACXX.1\tSM:m2109260\tPL:ILLUMINA\tLB:NGS-AdvBio\tDT:2017-01-01\tPU:D1375ACXX.1"
 
+#convert SAM to BAM directly using a pipe to avoid an additional 6GB sam file being created
 echo "**** bwa mem"
 bwa mem -t 4 -v 1 -R $read_grp_info -I 250,50 ${DATA_DIR}/reference/hg19.fa.gz \
 	${DATA_DIR}/trimmed_fastq/trimmed_data_1P ${DATA_DIR}/trimmed_fastq/trimmed_data_2P \
-	> ${ALIGN_DIR}/${FILE_NAME}_aligned.sam
+	| samtools view -h -Sb - > ${ALIGN_DIR}/${FILE_NAME}_aligned.bam
 
-
-echo "**** convert sam to bam"
-# Convert SAM to BAM
-samtools view -h -b ${ALIGN_DIR}/${FILE_NAME}_aligned.sam > ${ALIGN_DIR}/${FILE_NAME}_aligned.bam 
-
-
-#cleanup - sam file no longer needed
-rm ${ALIGN_DIR}/${FILE_NAME}_aligned.sam  
 
 
 echo "**** sort and index bam"
@@ -144,6 +142,10 @@ echo "**** sort and index bam"
 samtools sort ${ALIGN_DIR}/${FILE_NAME}_aligned.bam  > ${ALIGN_DIR}/${FILE_NAME}_sorted.bam 
 
 samtools index ${ALIGN_DIR}/${FILE_NAME}_sorted.bam
+
+#cleanup
+rm ${ALIGN_DIR}/${FILE_NAME}_aligned.bam  
+
 
 
 
@@ -375,7 +377,7 @@ $ANN_DIR/annotate_variation.pl -geneanno -buildver hg19 -dbtype refGene \
 	$RESULTS_DIR/annovar/${FILE_NAME}_annovar.dbSNP.hg19_snp130_filtered $ANN_DIR/humandb/
 
 #remove the first 3 columns that were added by annnotate_variation -geneanno
-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#necessary to be able to run table_annovar
+#necessary to be able to run table_annovar
 
 cut -f 4- -d$'\t' $RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.exonic_variant_function \
 	> $RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.new_evf
@@ -384,8 +386,8 @@ cut -f 4- -d$'\t' $RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.exonic_variant_fu
 echo "*** create annovar table"
 $ANN_DIR/table_annovar.pl -buildver hg19 \
 	-out $RESULTS_DIR/annovar/${FILE_NAME}_annovar -remove \
-	-protocol refGene,knownGene,exac03,clinvar_20180603 \
-	-operation g,g,f,f -otherinfo -nastring . -csvout \
+	-protocol refGene,knownGene,clinvar_20180603 \
+	-operation g,g,f -otherinfo -nastring . -csvout \
 	$RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.new_evf $ANN_DIR/humandb/ 
 echo -e "\n\n"
 

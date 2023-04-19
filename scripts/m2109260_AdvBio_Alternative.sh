@@ -6,8 +6,9 @@
 #
 # This script requires that your reference index is created in advance by running 
 # bwa index ${DATA_DIR}/reference/hg19.fa.gz
+# 
+# ALTERNATIVE VARIANT CALLER: bcftools mpileup and call
 #
-
 ################## Step 2.1 INIT STEPS #################
 
 echo "** Step 2.1 - init"
@@ -23,7 +24,6 @@ RESULTS_DIR="${PROJECT_DIR}/results"
 DATA_DIR="${PROJECT_DIR}/data"
 ALIGN_DIR="${DATA_DIR}/aligned_data"
 STATS_DIR="${DATA_DIR}/stats"
-
 
 
 ##check the folders exist - if they don't then create them
@@ -50,9 +50,14 @@ fi
 R1=NGS0001.R1.fastq
 R2=NGS0001.R2.fastq
 
-##Download the data
-#can be cmmented out as it is unnecessary to do this every time we run the script
-wget https://s3-eu-west-1.amazonaws.com/workshopdata2017/annotation.bed
+##Download the data if it doesn't already exist
+#commented out as it is unnecessary to do this every time we run the script
+if [ ! -f "${DATA_DIR}/annotation.bed" ]; then
+	echo "downloading annotation.bed"
+	wget https://s3-eu-west-1.amazonaws.com/workshopdata2017/annotation.bed
+else
+	echo "NOT downloading as annotation.bed already exists"
+fi
 
 cd untrimmed_fastq
 wget https://s3-eu-west-1.amazonaws.com/workshopdata2017/NGS0001.R1.fastq.qz
@@ -75,21 +80,25 @@ fastqc -t 4 ${DATA_DIR}/untrimmed_fastq/*.fastq.qz \
 echo -e "****trimming\n\n"
 #nextera_path set at the start of the script in section 2.1
 
-trimmomatic PE -threads 4 -phred33 ${DATA_DIR}/untrimmed_fastq/${R1} ${DATA_DIR}/untrimmed_fastq/${R2} -baseout ${DATA_DIR}/trimmed_fastq/trimmed_data ILLUMINACLIP:$nextera_path TRAILING:25 MINLEN:50
+trimmomatic PE -threads 4 -phred33 \
+	${DATA_DIR}/untrimmed_fastq/${R1} \
+	${DATA_DIR}/untrimmed_fastq/${R2} \
+	-baseout ${DATA_DIR}/trimmed_fastq/trimmed_data \
+	ILLUMINACLIP:$nextera_path TRAILING:25 MINLEN:50
 
 chmod +x ${DATA_DIR}/trimmed_fastq/trimmed_data*
 
 #cleanup the decompressed, untrimmed files
 rm ${DATA_DIR}/untrimmed_fastq/$R1
 rm ${DATA_DIR}/untrimmed_fastq/$R2
+rm ${DATA_DIR}/untrimmed_fastq/${R1}.qz
+rm ${DATA_DIR}/untrimmed_fastq/${R2}.qz
 
 
-
-## FastQC to check the trimming removed adapter sequences and low quality reads
+# FastQC
 echo -e "****fastqc 2\n\n"
 fastqc -t 4 ${DATA_DIR}/trimmed_fastq/trimmed_data_1P \
-	${DATA_DIR}/trimmed_fastq/trimmed_data_2P \
-	> $STATS_DIR/trimmed_fastqc.log
+	${DATA_DIR}/trimmed_fastq/trimmed_data_2P
 
 
 
@@ -103,7 +112,6 @@ fi
 mv ${DATA_DIR}/trimmed_fastq/*fastqc* ${RESULTS_DIR}/fastqc_trimmed_reads/
 
 echo -e "\n\n"
-
 
 
 ################## Section 2.3 ALIGNMENT ##################
@@ -122,42 +130,42 @@ echo "** Step 2.3 Alignment *"
 
 read_grp_info="@RG\tID:11V6WR1.111.D1375ACXX.1\tSM:m2109260\tPL:ILLUMINA\tLB:NGS-AdvBio\tDT:2017-01-01\tPU:D1375ACXX.1"
 
+#convert SAM to BAM directly using a pipe to avoid an additional 6GB sam file being created
 echo "**** bwa mem"
 bwa mem -t 4 -v 1 -R $read_grp_info -I 250,50 ${DATA_DIR}/reference/hg19.fa.gz \
 	${DATA_DIR}/trimmed_fastq/trimmed_data_1P ${DATA_DIR}/trimmed_fastq/trimmed_data_2P \
-	> ${ALIGN_DIR}/${FILE_NAME}_aligned.sam
+	| samtools view -h -Sb - > ${ALIGN_DIR}/${FILE_NAME}_aligned.bam
 
-
-echo "**** convert sam to bam"
-# Convert SAM to BAM
-samtools view -h -b ${ALIGN_DIR}/${FILE_NAME}_aligned.sam > ${ALIGN_DIR}/${FILE_NAME}_aligned.bam 
-
-
-#cleanup - sam file no longer needed
-rm ${ALIGN_DIR}/${FILE_NAME}_aligned.sam  
 
 
 echo "**** sort and index bam"
 # sort bam and create index (.bai file)
 samtools sort ${ALIGN_DIR}/${FILE_NAME}_aligned.bam  > ${ALIGN_DIR}/${FILE_NAME}_sorted.bam 
+
 samtools index ${ALIGN_DIR}/${FILE_NAME}_sorted.bam
+
+#cleanup
+rm ${ALIGN_DIR}/${FILE_NAME}_aligned.bam  
+
 
 
 
 ## 2) Duplicate Marking
 echo -e "**** duplicate marking\n\n"
-picard MarkDuplicates I=${ALIGN_DIR}/${FILE_NAME}_sorted.bam O=${ALIGN_DIR}/${FILE_NAME}_sorted_marked.bam M=$STATS_DIR/marked_dup_metrics.txt
+picard MarkDuplicates I=${ALIGN_DIR}/${FILE_NAME}_sorted.bam O=${ALIGN_DIR}/${FILE_NAME}_sorted_marked.bam M=$STATS_DIR/marked_dup_metrics.txt > $STATS_DIR/mark_duplicates.log
 
 samtools index ${ALIGN_DIR}/${FILE_NAME}_sorted_marked.bam
 echo -e "\n\n"
 
 
+
 ## 3) Post-Alignment Read Filtering
 echo "**** post-alignment read filtering"
-samtools view -F 1796  -q 20 -o $ALIGN_DIR/${FILE_NAME}_sorted_filtered.bam \
-	$ALIGN_DIR/${FILE_NAME}_sorted_marked.bam
+samtools view -F 1796  -q 20 -o $ALIGN_DIR/${FILE_NAME}_sorted_filtered.bam $ALIGN_DIR/${FILE_NAME}_sorted_marked.bam
 
 samtools index ${ALIGN_DIR}/${FILE_NAME}_sorted_filtered.bam
+
+
 
 
 ## 4) Generate Alignment Statistics
@@ -199,9 +207,13 @@ echo "****** 4 Depth of Coverage"
 # but annotation.bed is sorted lexographically
 # have to re-sort the annotation.bed to the same order as the bam files 
 # in order to use the -sorted option of bedtools coverage 
-bedtools sort -i $DATA_DIR/annotation.bed -faidx ${DATA_DIR}/reference/hg19_chrom.bed > $DATA_DIR/sorted_annotation.bed
+bedtools sort -i $DATA_DIR/annotation.bed -faidx ${DATA_DIR}/reference/hg19_chrom.bed \
+	> $DATA_DIR/sorted_annotation.bed
 
-bedtools coverage -sorted -g ${DATA_DIR}/reference/hg19_chrom.bed -a $DATA_DIR/sorted_annotation.bed -b $ALIGN_DIR/${FILE_NAME}_sorted_filtered.bam | sort -k5,5n > $STATS_DIR/DOC_sorted.bed
+bedtools coverage -sorted -g ${DATA_DIR}/reference/hg19_chrom.bed \
+	-a $DATA_DIR/sorted_annotation.bed \
+	-b $ALIGN_DIR/${FILE_NAME}_sorted_filtered.bam \
+	| sort -k5,5n > $STATS_DIR/DOC_sorted.bed
 
 
 # DOC Summary Statistics
@@ -229,7 +241,7 @@ awk 'BEGIN{count=0; sum=0; sumsq=0; min=0; max=0}
 
 #cleanup - essential to minimise storage requirements
 rm ${ALIGN_DIR}/${FILE_NAME}_sorted.*
-rm ${ALIGN_DIR}/${FILE_NAME}_aligned.*
+#rm ${ALIGN_DIR}/${FILE_NAME}_aligned.*
 rm ${ALIGN_DIR}/${FILE_NAME}_sorted_marked*
 
 
@@ -238,7 +250,6 @@ rm ${ALIGN_DIR}/${FILE_NAME}_sorted_marked*
 ################### Section 2.4 VARIANT CALLING #################
 
 echo "** Step 2.4 Variant Calling *"
-
 
 ################# ORIGINAL ######################################
 ## 1) Call Variants using Freebayes  
@@ -272,10 +283,6 @@ tabix -p vcf $RESULTS_DIR/${FILE_NAME}.vcf.gz
 
 
 
-#################    END ALT    ##################################
-
-
-
 ## 2) Quality Filter Variants using your choice of filters 
 
 #The quality filters need to change to accommodate the different
@@ -294,6 +301,7 @@ vcffilter -f "QUAL > 1 & QUAL / AC > 10 & RPB < 0.05" \
 	-g "SP > 60" $RESULTS_DIR/${FILE_NAME}.vcf.gz \
 	> $RESULTS_DIR/${FILE_NAME}_filter.tmp.vcf
 
+#################     END ALT   ##################################
 
 echo "bedtools intersect"
 #select only the variants that exist in the annotation file 
@@ -393,8 +401,8 @@ cut -f 4- -d$'\t' $RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.exonic_variant_fu
 echo "*** create annovar table"
 $ANN_DIR/table_annovar.pl -buildver hg19 \
 	-out $RESULTS_DIR/annovar/${FILE_NAME}_annovar -remove \
-	-protocol refGene,knownGene,exac03,clinvar_20180603 \
-	-operation g,g,f,f -otherinfo -nastring . -csvout \
+	-protocol refGene,knownGene,clinvar_20180603 \
+	-operation g,g,f -otherinfo -nastring . -csvout \
 	$RESULTS_DIR/annovar/${FILE_NAME}_annovar.RG.new_evf $ANN_DIR/humandb/ 
 echo -e "\n\n"
 
